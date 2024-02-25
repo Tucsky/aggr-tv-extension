@@ -10,6 +10,7 @@ const AGGR_EXTENSION = {
   },
   resolvedSymbols: JSON.parse(localStorage.getItem('aggr_resolved_symbols') || '{}'),
   market: JSON.parse(localStorage.getItem('aggr_market') || 'null'),
+  ffs: JSON.parse(localStorage.getItem('aggr_ffs') || '{}'),
   snapshot: null,
 }
 
@@ -70,14 +71,16 @@ const utils = {
       AGGR_EXTENSION.elements.container.appendChild(AGGR_EXTENSION.elements.widget)
     }
 
-    widget.classList.toggle('active')
-    if (widget.classList.contains('active')) {
+    if (!widget.classList.contains('active')) {
       utils.hideActiveItem()
+      widget.classList.add('active')
+
       if (!widget.children.length) {
         console.log('Starting AGGR session...')
         widget.appendChild(iframe)
       }
     } else {
+      widget.classList.remove('active')
       utils.restoreActiveItem()
     }
   },
@@ -96,7 +99,7 @@ function createWidget() {
     height: '100%',
     border: '0',
     frameBorder: '0',
-    src: 'https://tucsky.github.io/aggr/#tradingview',
+    src: 'https://tucsky.github.io/aggr',
   })
   elements.widget.className = 'widgetbar-page'
 }
@@ -126,16 +129,26 @@ function injectButton(previousButton) {
 }
 
 // TradingView Integration
-function setMarket(market) {
+function resolveSymbol(market, forceOriginal = false) {
   if (AGGR_EXTENSION.resolvedSymbols[market.id]) {
-    TradingViewApi._activeChartWidget()
-      ._model.mainSeries()
-      .setSymbolParams({ symbol: AGGR_EXTENSION.resolvedSymbols[market.id], currency: null, unit: null })
-  } else {
-    const type = market.type.replace('perp', 'swap')
+    return Promise.resolve(AGGR_EXTENSION.resolvedSymbols[market.id])
+  }
+
+  const query = {
+    ...market,
+  }
+
+  if (!forceOriginal && AGGR_EXTENSION.ffs.normalizeMarkets) {
+    query.exchange = 'BINANCE'
+    query.type = 'spot'
+    query.local = query.local.replace(/^100+/, '')
+  }
+
+  return new Promise((resolve) => {
+    const type = query.type.replace('perp', 'swap')
     TradingViewApi.symbolSearch()._chartApiInstance.searchSymbols(
-      market.local,
-      market.exchange.replace(/_.*/, ''),
+      query.local,
+      query.exchange.replace(/_.*/, ''),
       '',
       '',
       '',
@@ -144,18 +157,31 @@ function setMarket(market) {
       '',
       '',
       (results) => {
-        const match = results.find((a) => a.currency_code === market.quote && a.type === type)
+        const match = results.find((a) => a.currency_code === query.quote && a.type === type)
         if (match) {
           const symbol = `${match.exchange}:${match.symbol}`
-          AGGR_EXTENSION.resolvedSymbols[market.id] = symbol
+          AGGR_EXTENSION.resolvedSymbols[query.id] = symbol
           localStorage.setItem('aggr_symbols_cache', JSON.stringify(AGGR_EXTENSION.resolvedSymbols))
-          TradingViewApi._activeChartWidget()
-            ._model.mainSeries()
-            .setSymbolParams({ symbol, currency: null, unit: null })
+
+          resolve(symbol)
+        } else {
+          if (!forceOriginal) {
+            resolve(resolveSymbol(market, true))
+          } else {
+            resolve(null)
+          }
         }
       }
     )
-  }
+  })
+}
+
+async function setMarket(market) {
+  const symbol = await resolveSymbol(market)
+
+  TradingViewApi._activeChartWidget()
+    ._model.mainSeries()
+    .setSymbolParams({ symbol: symbol, currency: null, unit: null })
 }
 
 function setCrosshair(crosshair) {
@@ -185,7 +211,7 @@ function listenForIncomingEvents() {
         switch (data.op) {
           case 'ready':
             if (AGGR_EXTENSION.market) {
-              setMarket(AGGR_EXTENSION.market)
+              postMessage('market', AGGR_EXTENSION.market)
             }
             break
           case 'market':
@@ -201,6 +227,20 @@ function listenForIncomingEvents() {
   )
 }
 
+function postMessage(op, data) {
+  if (!isIframeReady()) {
+    return
+  }
+
+  AGGR_EXTENSION.elements.iframe.contentWindow.postMessage(
+    JSON.stringify({
+      op,
+      data,
+    }),
+    '*'
+  )
+}
+
 function listenForMarketChange() {
   const mainSerie = TradingViewApi._activeChartWidget()._model.mainSeries()
   mainSerie.symbolResolved().subscribe(null, async (symbolInfo) => {
@@ -209,17 +249,7 @@ function listenForMarketChange() {
     AGGR_EXTENSION.market = { currency_code, exchange, base_currency, type, id: full_name }
     localStorage.setItem('aggr_market', JSON.stringify(AGGR_EXTENSION.market))
 
-    if (!isIframeReady()) {
-      return
-    }
-
-    AGGR_EXTENSION.elements.iframe.contentWindow.postMessage(
-      JSON.stringify({
-        op: 'market',
-        data: AGGR_EXTENSION.market,
-      }),
-      '*'
-    )
+    postMessage('market', AGGR_EXTENSION.market)
   })
 }
 
@@ -241,16 +271,10 @@ function listenToCrossHairChange() {
     const timestamp = TradingViewApi._activeChartWidget()._model.model().timeScale().indexToTimePoint(index)
     const currentPrice = +TradingViewApi._activeChartWidget()._model.mainSeries().lastValueData().formattedPriceAbsolute
 
-    AGGR_EXTENSION.elements.iframe.contentWindow.postMessage(
-      JSON.stringify({
-        op: 'crosshair',
-        data: {
-          timestamp,
-          change: (1 - price / currentPrice) * -1,
-        },
-      }),
-      '*'
-    )
+    postMessage('crosshair', {
+      timestamp,
+      change: (1 - price / currentPrice) * -1,
+    })
   })
 }
 
