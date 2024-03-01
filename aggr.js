@@ -1,12 +1,13 @@
 // AGGR Extension Object to hold key data structures and UI elements
 const AGGR_EXTENSION = {
   elements: {
-    originals: { button: null, widget: null },
+    originals: { button: null },
     button: null,
     widget: null,
     iframe: null,
     container: null,
     toolbar: null,
+    fallbackButton: null
   },
   resolvedSymbols: JSON.parse(localStorage.getItem('aggr_resolved_symbols') || '{}'),
   market: JSON.parse(localStorage.getItem('aggr_market') || 'null'),
@@ -17,33 +18,42 @@ const AGGR_EXTENSION = {
 // Utility Functions for AGGR Extension
 const utils = {
   restoreActiveItem: function () {
-    const { originals, button, container } = AGGR_EXTENSION.elements
+    const { originals, button } = AGGR_EXTENSION.elements
+
     if (originals.button) {
       ;[originals.button.className, button.className] = [button.className, originals.button.className]
+
+      originals.button.click()
+
       originals.button = null
     }
-    if (originals.widget) {
-      container.appendChild(originals.widget)
-      originals.widget.classList.add('active')
-      originals.widget = null
-    }
   },
-  hideActiveItem: function () {
-    const { originals, button, container, toolbar } = AGGR_EXTENSION.elements
+  hideActiveItem: async function () {
+    const { originals, button, container, toolbar, fallbackButton } = AGGR_EXTENSION.elements
     originals.button = toolbar.querySelector('button[aria-pressed="true"]')
 
     if (originals.button) {
       ;[button.className, originals.button.className] = [originals.button.className, button.className]
     }
 
-    const currentActiveWidget = container.querySelector('.widgetbar-page.active')
-    if (currentActiveWidget && currentActiveWidget !== AGGR_EXTENSION.elements.widget) {
-      originals.widget = container.querySelector('.widgetbar-page.active')
-      originals.widget.classList.remove('active')
-      container.removeChild(originals.widget)
+    if (originals.button !== fallbackButton) {
+      fallbackButton.click()
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+    if (originals.button) {
+      fallbackButton.className = originals.button.className
+    }
+    const activeWidgets = container.querySelectorAll('.widgetbar-page.active')
+    for (const widget of activeWidgets) {
+      widget.classList.remove('active')
     }
   },
   onToolbarItemClick: function (event) {
+    if (!event.isTrusted) {
+      return
+    }
+    
     const { widget } = AGGR_EXTENSION.elements
     if (widget.classList.contains('active')) {
       widget.classList.remove('active')
@@ -72,7 +82,7 @@ const utils = {
     }
 
     if (!widget.classList.contains('active')) {
-      utils.hideActiveItem()
+      await utils.hideActiveItem()
       widget.classList.add('active')
 
       if (!widget.children.length) {
@@ -107,6 +117,7 @@ function createWidget() {
 function injectButton(previousButton) {
   const { elements } = AGGR_EXTENSION
   elements.toolbar = document.querySelector('[data-name="right-toolbar"]')
+  elements.fallbackButton = elements.toolbar.querySelector('[data-name="object_tree"]')
   elements.button = document.createElement('button')
   const { button, toolbar } = elements
   button.className = toolbar.children[toolbar.children.length - 1].className
