@@ -292,7 +292,7 @@ function listenToCrossHairChange() {
 // Initialization
 function initializeExtension() {
   const readyStateCheckInterval = setInterval(function (time) {
-    const streamsButton = document.querySelector('[data-name="streams"]')
+    const streamsButton = document.querySelector('[data-name="ideas_stream"]')
     if (streamsButton) {
       clearInterval(readyStateCheckInterval)
       createWidget()
