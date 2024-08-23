@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Aggr TV",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Injects AGGR widget into TV for enhanced trading analysis.",
   "permissions": [
     "scripting"
@@ -15,7 +15,7 @@
     {
       "matches": [
         "https://www.tradingview.com/chart/*",
-        "https://fr.tradingview.com/chart/*"
+        "https://*.tradingview.com/chart/*"
       ],
       "js": [
         "content.js"
