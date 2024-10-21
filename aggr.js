@@ -157,7 +157,7 @@ function resolveSymbol(market, forceOriginal = false) {
 
   return new Promise((resolve) => {
     const type = query.type.replace('perp', 'swap')
-    TradingViewApi.symbolSearch()._chartApiInstance.searchSymbols(
+    TradingViewApi._chartApiInstance.searchSymbols(
       query.local,
       query.exchange.replace(/_.*/, ''),
       '',
