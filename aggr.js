@@ -150,40 +150,33 @@ function resolveSymbol(market, forceOriginal = false) {
   }
 
   if (!forceOriginal && AGGR_EXTENSION.ffs.normalizeMarkets) {
-    query.exchange = 'BINANCE'
+    query.exchange = 'CRYPTO'
     query.type = 'spot'
-    query.local = query.local.replace(/^100+/, '')
+    query.quote = 'USD'
+    query.local = query.local.replace(/^100+/, '').replace(/USD$/, '')
   }
 
   return new Promise((resolve) => {
     const type = query.type.replace('perp', 'swap')
-    TradingViewApi._chartApiInstance.searchSymbols(
-      query.local,
-      query.exchange.replace(/_.*/, ''),
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      (results) => {
-        const match = results.find((a) => a.currency_code === query.quote && a.type === type)
-        if (match) {
-          const symbol = `${match.exchange}:${match.symbol}`
-          AGGR_EXTENSION.resolvedSymbols[query.id] = symbol
-          localStorage.setItem('aggr_symbols_cache', JSON.stringify(AGGR_EXTENSION.resolvedSymbols))
+    fetch(`https://symbol-search.tradingview.com/symbol_search/v3/?text=${query.local}&hl=1&exchange=${query.exchange}&lang=fr&search_type=crypto&domain=production&sort_by_country=US`)
+    .then(res => res.json())
+    .then(res => {
+      const match = res.symbols.find((a) => a.currency_code === query.quote && a.type === type)
+      if (match) {
+        const symbol = `${match.exchange}:${match.symbol.replace(/<\/?[^>]+(>|$)/g, "")}`
+        AGGR_EXTENSION.resolvedSymbols[query.id] = symbol
+        localStorage.setItem('aggr_resolved_symbols', JSON.stringify(AGGR_EXTENSION.resolvedSymbols))
 
-          resolve(symbol)
+        resolve(symbol)
+      } else {
+        if (!forceOriginal) {
+          resolve(resolveSymbol(market, true))
         } else {
-          if (!forceOriginal) {
-            resolve(resolveSymbol(market, true))
-          } else {
-            resolve(null)
-          }
+          resolve(null)
         }
       }
-    )
+    })
+    .catch(err => console.error('Error:', err));
   })
 }
 
@@ -201,11 +194,11 @@ function setCrosshair(crosshair) {
   }
   const model = TradingViewApi._activeChartWidget()._model
   const index = model.model().timeScale().timePointToIndex(crosshair.timestamp)
-  const currentPrice = +model.mainSeries().lastValueData().formattedPriceAbsolute
+  const currentPrice = parseFloat(TradingViewApi._activeChartWidget()._model.mainSeries().lastValueData().formattedPriceAbsolute.replace(/\s/g, '').replace(/,/g, '.'))
   const price = currentPrice * (1 + crosshair.change)
   const crossHairSource = model.model().crossHairSource()
   crossHairSource.setPosition(index, price, model.model().mainPane())
-  model.chartModel().lightUpdate()
+  TradingViewApi._activeChartWidget()._model.model().lightUpdate()
 }
 
 function listenForIncomingEvents() {
@@ -274,17 +267,16 @@ function isIframeReady() {
 
 function listenToCrossHairChange() {
   const crossHairSource = TradingViewApi._activeChartWidget()._model.model().crossHairSource()
-  crossHairSource.moved().subscribe(crossHairSource, ({ index, price }) => {
+  crossHairSource.moved().subscribe(crossHairSource, (e) => {
     if (!isIframeReady()) {
       return
     }
-
-    const timestamp = TradingViewApi._activeChartWidget()._model.model().timeScale().indexToTimePoint(index)
-    const currentPrice = +TradingViewApi._activeChartWidget()._model.mainSeries().lastValueData().formattedPriceAbsolute
+    const timestamp = TradingViewApi._activeChartWidget()._model.model().timeScale().indexToTimePoint(e.index)
+    const currentPrice = parseFloat(TradingViewApi._activeChartWidget()._model.mainSeries().lastValueData().formattedPriceAbsolute.replace(',', '.'))
 
     postMessage('crosshair', {
       timestamp,
-      change: (1 - price / currentPrice) * -1,
+      change: (1 - e.price / currentPrice) * -1,
     })
   })
 }
@@ -292,7 +284,7 @@ function listenToCrossHairChange() {
 // Initialization
 function initializeExtension() {
   const readyStateCheckInterval = setInterval(function (time) {
-    const streamsButton = document.querySelector('[data-name="ideas_stream"]')
+    const streamsButton = document.querySelector('[data-name="union_chats"]')
     if (streamsButton) {
       clearInterval(readyStateCheckInterval)
       createWidget()
