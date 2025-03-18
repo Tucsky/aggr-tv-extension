@@ -196,8 +196,8 @@ function setCrosshair(crosshair) {
   const index = model.model().timeScale().timePointToIndex(crosshair.timestamp)
   const currentPrice = parseFloat(TradingViewApi._activeChartWidget()._model.mainSeries().lastValueData().formattedPriceAbsolute.replace(/\s/g, '').replace(/,/g, '.'))
   const price = currentPrice * (1 + crosshair.change)
-  const crossHairSource = model.model().crossHairSource()
-  crossHairSource.setPosition(index, price, model.model().mainPane())
+  const crosshairSource = model.model().crosshairSource()
+  crosshairSource.setPosition(index, price, model.model().mainPane())
   TradingViewApi._activeChartWidget()._model.model().lightUpdate()
 }
 
@@ -266,8 +266,8 @@ function isIframeReady() {
 }
 
 function listenToCrossHairChange() {
-  const crossHairSource = TradingViewApi._activeChartWidget()._model.model().crossHairSource()
-  crossHairSource.moved().subscribe(crossHairSource, (e) => {
+  const crosshairSource = TradingViewApi._activeChartWidget()._model.model().crosshairSource()
+  crosshairSource.moved().subscribe(crosshairSource, (e) => {
     if (!isIframeReady()) {
       return
     }
